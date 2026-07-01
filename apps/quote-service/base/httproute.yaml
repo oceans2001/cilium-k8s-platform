@@ -1,0 +1,31 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: quote-route
+  namespace: quote-app
+  labels:
+    team: app-team
+    env: production
+spec:
+  parentRefs:
+  - group: gateway.networking.k8s.io
+    kind: Gateway
+    name: shared-gateway
+    namespace: gateway-infra  # cross-namespace route attachment
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /quote
+    backendRefs:
+    - name: quote-service
+      port: 80
+      weight: 1
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /health
+    backendRefs:
+    - name: quote-service
+      port: 80
+      weight: 1
