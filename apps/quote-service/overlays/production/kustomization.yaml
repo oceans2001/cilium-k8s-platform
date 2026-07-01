@@ -1,0 +1,20 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# reference to base configuration
+resources:
+- ../../base
+
+# production-specific overrides
+images:
+- name: ghcr.io/oceans2001/quote-service
+  newTag: "1.0.0"   # pin to specific version, never use latest in production!
+
+patches:
+- target:
+    kind: Deployment
+    name: quote-service
+  patch: |-
+    - op: replace
+      path: /spec/replicas
+      value: 3   # more replicas in production
