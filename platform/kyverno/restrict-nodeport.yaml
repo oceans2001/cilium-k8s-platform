@@ -1,3 +1,4 @@
+---
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
@@ -8,14 +9,14 @@ metadata:
 spec:
   validationFailureAction: Enforce
   rules:
-  - name: deny-nodeport
-    match:
-      any:
-      - resources:
-          kinds:
-          - Service
-    validate:
-      message: "NodePort services are not allowed. Use ClusterIP with Gateway API instead."
-      pattern:
-        spec:
-          =(type): "!NodePort"
+    - name: deny-nodeport
+      match:
+        any:
+          - resources:
+              kinds:
+                - Service
+      validate:
+        message: "NodePort services are not allowed. Use ClusterIP with Gateway API instead."
+        pattern:
+          spec:
+            =(type): "!NodePort"

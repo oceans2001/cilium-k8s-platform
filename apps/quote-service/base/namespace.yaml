@@ -1,3 +1,4 @@
+---
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -5,4 +6,4 @@ metadata:
   labels:
     team: app-team
     env: production
-    shared-gateway-access: "true"  # allows HTTPRoute to attach to shared Gateway
+    shared-gateway-access: "true"

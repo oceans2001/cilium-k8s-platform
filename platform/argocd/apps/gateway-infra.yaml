@@ -1,3 +1,4 @@
+---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -17,8 +18,8 @@ spec:
     namespace: gateway-infra
   syncPolicy:
     automated:
-      prune: true       # remove resources deleted from Git
-      selfHeal: true    # revert manual changes in cluster
+      prune: true
+      selfHeal: true
     syncOptions:
-    - CreateNamespace=true
-    - ServerSideApply=true
+      - CreateNamespace=true
+      - ServerSideApply=true
