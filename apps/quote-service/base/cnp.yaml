@@ -1,0 +1,25 @@
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: quote-service-policy
+  namespace: quote-app
+  labels:
+    team: app-team      # required by Kyverno!
+    env: production     # required by Kyverno!
+spec:
+  endpointSelector:
+    matchLabels:
+      app: quote-service
+  ingress:
+  - fromEntities:
+    - ingress           # only Gateway/Envoy can reach us
+    toPorts:
+    - ports:
+      - port: "8080"
+        protocol: TCP
+      rules:
+        http:
+        - method: GET
+          path: /quote  # L7! only GET /quote allowed
+        - method: GET
+          path: /health # healthcheck endpoint
