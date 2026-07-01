@@ -1,3 +1,4 @@
+---
 name: CI
 
 on:
@@ -11,38 +12,35 @@ jobs:
     name: YAML Lint
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4.2.2
 
-    - name: Install yamllint
-      run: pip install yamllint
+      - name: Install yamllint
+        run: pip install yamllint
 
-    - name: Lint YAML files
-      run: |
-        yamllint -d "{extends: default, rules: {line-length: {max: 120}}}" \
-          apps/ networking/ platform/
+      - name: Lint YAML files
+        run: |
+          yamllint -d "{extends: default, rules: {line-length: {max: 120}}}" \
+            apps/ networking/ platform/
 
   kubernetes-validate:
     name: Kubernetes Validate
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4.2.2
 
-    - name: Install kubectl
-      uses: azure/setup-kubectl@v3
+      - name: Install kubeconform
+        run: |
+          curl -L https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz | tar xz
+          sudo mv kubeconform /usr/local/bin/
 
-    - name: Install kubeconform
-      run: |
-        curl -L https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz | tar xz
-        sudo mv kubeconform /usr/local/bin/
-
-    - name: Validate Kubernetes manifests
-      run: |
-        find apps/ networking/ platform/ -name "*.yaml" \
-          ! -name "kustomization.yaml" \
-          ! -name "values.yaml" \
-          ! -name "cluster-config.yaml" \
-          | xargs kubeconform \
-            -strict \
-            -ignore-missing-schemas \
-            -schema-location default \
-            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
+      - name: Validate Kubernetes manifests
+        run: |
+          find apps/ networking/ platform/ -name "*.yaml" \
+            ! -name "kustomization.yaml" \
+            ! -name "values.yaml" \
+            ! -name "cluster-config.yaml" \
+            | xargs kubeconform \
+              -strict \
+              -ignore-missing-schemas \
+              -schema-location default \
+              -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
