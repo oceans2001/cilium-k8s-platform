@@ -1,0 +1,34 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: shared-gateway
+  namespace: gateway-infra
+  labels:
+    team: platform
+    managed-by: argocd
+spec:
+  gatewayClassName: cilium
+  listeners:
+  - name: http
+    port: 80
+    protocol: HTTP
+    allowedRoutes:
+      namespaces:
+        from: Selector    # only namespaces with the right label can attach
+        selector:
+          matchLabels:
+            shared-gateway-access: "true"
+  - name: https
+    port: 443
+    protocol: HTTPS
+    allowedRoutes:
+      namespaces:
+        from: Selector
+        selector:
+          matchLabels:
+            shared-gateway-access: "true"
+    tls:
+      mode: Terminate
+      certificateRefs:
+      - name: platform-tls
+        kind: Secret
