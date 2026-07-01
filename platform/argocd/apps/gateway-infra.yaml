@@ -1,0 +1,24 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: gateway-infra
+  namespace: argocd
+  labels:
+    team: platform
+    managed-by: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/oceans2001/cilium-k8s-platform.git
+    targetRevision: HEAD
+    path: networking/gateway-infra
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: gateway-infra
+  syncPolicy:
+    automated:
+      prune: true       # remove resources deleted from Git
+      selfHeal: true    # revert manual changes in cluster
+    syncOptions:
+    - CreateNamespace=true
+    - ServerSideApply=true
