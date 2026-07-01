@@ -1,3 +1,4 @@
+---
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
@@ -8,16 +9,16 @@ metadata:
 spec:
   validationFailureAction: Enforce
   rules:
-  - name: check-labels
-    match:
-      any:
-      - resources:
-          kinds:
-          - CiliumNetworkPolicy
-    validate:
-      message: "CNP must have 'team' and 'env' labels."
-      pattern:
-        metadata:
-          labels:
-            team: "?*"
-            env: "?*"
+    - name: check-labels
+      match:
+        any:
+          - resources:
+              kinds:
+                - CiliumNetworkPolicy
+      validate:
+        message: "CNP must have 'team' and 'env' labels."
+        pattern:
+          metadata:
+            labels:
+              team: "?*"
+              env: "?*"
