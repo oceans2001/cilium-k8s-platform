@@ -1,0 +1,32 @@
+apiVersion: cilium.io/v2
+kind: CiliumClusterwideNetworkPolicy
+metadata:
+  name: platform-dns-visibility
+  labels:
+    team: platform
+    env: production
+spec:
+  description: "Allow DNS egress to CoreDNS with L7 visibility"
+  endpointSelector:
+    matchExpressions:
+    - key: any:io.kubernetes.pod.namespace
+      operator: NotIn
+      values:
+      - kube-system
+  enableDefaultDeny:
+    egress: false      # don't flip to default-deny
+    ingress: false
+  egress:
+  - toEndpoints:
+    - matchLabels:
+        any:io.kubernetes.pod.namespace: kube-system
+        any:k8s-app: kube-dns
+    toPorts:
+    - ports:
+      - port: "53"
+        protocol: UDP
+      - port: "53"
+        protocol: TCP
+      rules:
+        dns:
+        - matchPattern: '*'   # allow all DNS queries

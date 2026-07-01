@@ -1,0 +1,16 @@
+apiVersion: cilium.io/v2
+kind: CiliumClusterwideNetworkPolicy
+metadata:
+  name: default-deny
+  labels:
+    team: platform
+    env: production
+spec:
+  description: "Default deny all ingress and egress for all pods"
+  endpointSelector: {}   # applies to all pods
+  ingress:
+  - fromEntities:
+    - cluster             # allow intra-cluster traffic
+  egress:
+  - toEntities:
+    - cluster             # allow intra-cluster traffic
