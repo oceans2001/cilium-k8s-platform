@@ -1,0 +1,21 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: restrict-nodeport-services
+  annotations:
+    policies.kyverno.io/title: Restrict NodePort Services
+    policies.kyverno.io/description: NodePort is not allowed. Use ClusterIP with Gateway API instead.
+spec:
+  validationFailureAction: Enforce
+  rules:
+  - name: deny-nodeport
+    match:
+      any:
+      - resources:
+          kinds:
+          - Service
+    validate:
+      message: "NodePort services are not allowed. Use ClusterIP with Gateway API instead."
+      pattern:
+        spec:
+          =(type): "!NodePort"

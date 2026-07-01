@@ -1,0 +1,23 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-cnp-labels
+  annotations:
+    policies.kyverno.io/title: Require labels on CiliumNetworkPolicy
+    policies.kyverno.io/description: Every CNP must have team and env labels for ownership tracking.
+spec:
+  validationFailureAction: Enforce
+  rules:
+  - name: check-labels
+    match:
+      any:
+      - resources:
+          kinds:
+          - CiliumNetworkPolicy
+    validate:
+      message: "CNP must have 'team' and 'env' labels."
+      pattern:
+        metadata:
+          labels:
+            team: "?*"
+            env: "?*"
