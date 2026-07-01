@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: quote-service
+  namespace: quote-app
+  labels:
+    app: quote-service
+    team: app-team
+spec:
+  selector:
+    app: quote-service
+  ports:
+  - port: 80
+    targetPort: 8080
+    protocol: TCP
+  type: ClusterIP  # NodePort is blocked by Kyverno!
