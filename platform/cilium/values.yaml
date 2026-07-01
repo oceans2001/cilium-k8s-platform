@@ -1,0 +1,31 @@
+# Cilium Helm values
+# Enables all platform features used in this reference implementation
+
+# Kube-proxy replacement with eBPF (faster than iptables)
+kubeProxyReplacement: true
+
+# Gateway API support
+gatewayAPI:
+  enabled: true
+
+# Hubble observability
+hubble:
+  enabled: true
+  relay:
+    enabled: true
+  ui:
+    enabled: true
+
+# L7 visibility via Envoy
+envoy:
+  enabled: true
+
+# Ingress controller
+ingressController:
+  enabled: true
+  default: true
+  loadbalancerMode: shared
+
+# LB-IPAM for LoadBalancer services
+lbIPAM:
+  enabled: true
