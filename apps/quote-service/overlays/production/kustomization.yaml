@@ -5,7 +5,7 @@ resources:
   - ../../base
 images:
   - name: ghcr.io/oceans2001/quote-service
-    newTag: "1.0.0"
+    newTag: "latest"
 patches:
   - target:
       kind: Deployment
