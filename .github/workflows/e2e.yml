@@ -36,7 +36,7 @@ jobs:
 
       # --- cluster ---
       - name: Create Kind cluster
-        run: kind create cluster --config platform/kind/kind-config.yaml --wait 60s
+        run: kind create cluster --config platform/kind/cluster-config.yaml --wait 60s
 
       # --- cilium ---
       - name: Install Cilium
