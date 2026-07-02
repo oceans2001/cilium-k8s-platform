@@ -70,8 +70,16 @@ jobs:
       # --- wait for sync ---
       - name: Wait for quote-service to sync
         run: |
-          # give Argo CD time to discover and apply manifests
-          sleep 30
+          echo "Waiting for quote-app namespace..."
+          for i in $(seq 1 24); do
+            if kubectl get namespace quote-app 2>/dev/null; then
+              echo "Namespace quote-app found"
+              break
+            fi
+            echo "Attempt $i/24 - namespace not yet created, waiting 10s..."
+            sleep 10
+          done
+          kubectl get namespace quote-app || { echo "❌ Namespace never created"; exit 1; }
           kubectl -n quote-app rollout status deployment/quote-service --timeout=3m
 
       # --- test ---
