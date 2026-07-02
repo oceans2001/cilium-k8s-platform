@@ -70,7 +70,7 @@ jobs:
       # --- wait for sync ---
       - name: Wait for quote-service to sync
         run: |
-          # дать Argo CD время обнаружить и применить манифесты
+          # give Argo CD time to discover and apply manifests
           sleep 30
           kubectl -n quote-app rollout status deployment/quote-service --timeout=3m
 
