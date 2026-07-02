@@ -38,6 +38,15 @@ jobs:
       - name: Create Kind cluster
         run: kind create cluster --config platform/kind/cluster-config.yaml --wait 60s
 
+      # --- gateway api crds ---
+      - name: Install Gateway API CRDs
+        run: |
+          kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.2.0/config/crd/standard/gateway.networking.k8s.io_gatewayclasses.yaml
+          kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.2.0/config/crd/standard/gateway.networking.k8s.io_gateways.yaml
+          kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.2.0/config/crd/standard/gateway.networking.k8s.io_httproutes.yaml
+          kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.2.0/config/crd/standard/gateway.networking.k8s.io_referencegrants.yaml
+          kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.2.0/config/crd/standard/gateway.networking.k8s.io_grpcroutes.yaml
+
       # --- cilium ---
       - name: Install Cilium
         run: |
@@ -104,7 +113,9 @@ jobs:
           kubectl get pods -A
           echo "=== Argo CD Apps ==="
           kubectl get applications -n argocd
+          echo "=== Argo CD gateway-infra details ==="
+          kubectl get application gateway-infra -n argocd -o jsonpath='{.status.conditions}' || true
           echo "=== quote-service logs ==="
           kubectl -n quote-app logs -l app=quote-service --tail=100 || true
           echo "=== Events ==="
-          kubectl get events -n quote-app --sort-by='.lastTimestamp'
+          kubectl get events -n quote-app --sort-by='.lastTimestamp' || true
