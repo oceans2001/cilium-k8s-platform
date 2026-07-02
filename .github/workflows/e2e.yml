@@ -113,6 +113,8 @@ jobs:
           kubectl get pods -A
           echo "=== Argo CD Apps ==="
           kubectl get applications -n argocd
+          echo "=== Pod describe ==="
+          kubectl describe pods -n quote-app || true
           echo "=== Argo CD gateway-infra details ==="
           kubectl get application gateway-infra -n argocd -o jsonpath='{.status.conditions}' || true
           echo "=== quote-service logs ==="
