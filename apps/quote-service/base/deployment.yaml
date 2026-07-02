@@ -22,7 +22,7 @@ spec:
     spec:
       containers:
         - name: quote-service
-          image: ghcr.io/oceans2001/quote-service:latest
+          image: ghcr.io/oceans2001/cilium-k8s-platform/quote-service:latest
           ports:
             - containerPort: 8080
           readinessProbe:
