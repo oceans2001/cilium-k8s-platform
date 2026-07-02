@@ -65,7 +65,7 @@ jobs:
 
       - name: Apply App of Apps
         run: |
-          kubectl apply -f platform/argocd/app-of-apps.yaml
+          kubectl apply -f platform/argocd/root-app.yaml
 
       # --- wait for sync ---
       - name: Wait for quote-service to sync
