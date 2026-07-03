@@ -85,7 +85,6 @@ jobs:
           print(ipv4[0]['Subnet'].rsplit('.', 1)[0])
           ")
           echo "Using IP base: $BASE"
-
           kubectl apply -f - <<YAML
           apiVersion: metallb.io/v1beta1
           kind: IPAddressPool
@@ -144,8 +143,8 @@ jobs:
           kubectl get namespace quote-app || { echo "❌ Namespace never created"; exit 1; }
           kubectl -n quote-app rollout status deployment/quote-service --timeout=3m
 
-      # --- wait for gateway IP ---
-      - name: Wait for Gateway to get IP
+      # --- wait for gateway IP and test ---
+      - name: Wait for Gateway IP and test via Gateway
         run: |
           echo "Waiting for Gateway IP..."
           for i in $(seq 1 18); do
@@ -153,7 +152,6 @@ jobs:
               -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || echo "")
             if [ -n "$GW_IP" ]; then
               echo "Gateway IP: $GW_IP"
-              echo "GW_IP=$GW_IP" >> $GITHUB_ENV
               break
             fi
             echo "Attempt $i/18 - no IP yet, waiting 10s..."
@@ -164,15 +162,8 @@ jobs:
             kubectl get gateway -A
             exit 1
           fi
-
-      # --- test via gateway ---
-      - name: Test quote-service via Gateway
-        run: |
           echo "Testing via Gateway IP: $GW_IP"
-          response=$(curl -s -o /dev/null -w "%{http_code}" \
-            --retry 5 --retry-delay 3 \
-            
-            http://${GW_IP}/quote)
+          response=$(curl -s -o /dev/null -w "%{http_code}" --retry 5 --retry-delay 3 http://${GW_IP}/quote)
           echo "HTTP status: $response"
           if [ "$response" != "200" ]; then
             echo "❌ Expected 200, got $response"
