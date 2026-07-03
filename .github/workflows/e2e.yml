@@ -77,14 +77,15 @@ jobs:
 
       - name: Configure MetalLB IP pool
         run: |
-          # get Kind network subnet
-          SUBNET=$(docker network inspect kind | \
-            python3 -c "import sys,json; print(json.load(sys.stdin)[0]['IPAM']['Config'][0]['Subnet'])")
-          echo "Kind subnet: $SUBNET"
-
-          # use last /28 of the subnet for MetalLB (e.g. 172.18.255.200-172.18.255.250)
-          BASE=$(echo $SUBNET | cut -d'.' -f1-3)
-          echo "Using IP range: ${BASE}.200-${BASE}.250"
+          # get IPv4 subnet explicitly
+          BASE=$(docker network inspect kind \
+            | python3 -c "
+          import sys, json
+          networks = json.load(sys.stdin)[0]['IPAM']['Config']
+          ipv4 = [n for n in networks if ':' not in n['Subnet']]
+          print(ipv4[0]['Subnet'].rsplit('.', 1)[0])
+          ")
+          echo "Using IP base: $BASE"
 
           kubectl apply -f - <<YAML
           apiVersion: metallb.io/v1beta1
@@ -179,7 +180,7 @@ jobs:
           echo "=== HTTPRoutes ==="
           kubectl get httproute -A
           echo "=== Argo CD Apps ==="
-          kubectl get applications -n argocd
+          kubectl get applications -n argocd || true
           echo "=== Pod describe ==="
           kubectl describe pods -n quote-app || true
           echo "=== Argo CD gateway-infra details ==="
