@@ -175,6 +175,10 @@ jobs:
         run: |
           echo "=== Pods ==="
           kubectl get pods -A
+          echo "=== Gateway details ==="
+          kubectl describe gateway shared-gateway -n gateway-infra || true
+          echo "=== HTTPRoute details ==="
+          kubectl describe httproute quote-route -n quote-app || true
           echo "=== Gateways ==="
           kubectl get gateway -A
           echo "=== HTTPRoutes ==="
