@@ -134,13 +134,14 @@ jobs:
           kubectl get namespace quote-app || { echo "Namespace never created"; exit 1; }
           kubectl -n quote-app rollout status deployment/quote-service --timeout=3m
 
-      - name: Diagnose and test via Gateway
+      - name: Wait for Gateway IP
         run: |
-          echo "=== Waiting for Gateway IP ==="
+          echo "Waiting for Gateway IP..."
           for i in $(seq 1 18); do
             GW_IP=$(kubectl get gateway -n gateway-infra shared-gateway \
               -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || echo "")
             if [ -n "$GW_IP" ]; then
+              echo "GW_IP=$GW_IP" >> $GITHUB_ENV
               echo "Gateway IP: $GW_IP"
               break
             fi
@@ -149,28 +150,29 @@ jobs:
           done
           if [ -z "$GW_IP" ]; then
             echo "Gateway never got an IP"
+            kubectl get gateway -A
             exit 1
           fi
 
-          echo "=== Direct curl from runner ==="
-          curl -sv http://$\{GW_IP\}/quote 2>&1 || true
-
-          echo "=== Curl from inside cluster ==="
+      - name: Test quote-service via Gateway from inside cluster
+        run: |
+          echo "Testing via Gateway IP: ${{ env.GW_IP }}"
           kubectl run curl-test \
             --image=curlimages/curl:latest \
             --restart=Never \
+            --attach \
             --rm \
-            --timeout=30s \
-            -- curl -sv http://$\{GW_IP\}/quote 2>&1 || true
-
-          echo "=== Final test ==="
-          http_code=$(curl -s -o /dev/null -w "%{http_code}" http://${GW_IP}/quote)
+            -i \
+            --namespace default \
+            -- sh -c "curl -s -o /dev/null -w '%{http_code}' http://${{ env.GW_IP }}/quote" > /tmp/curl_result.txt 2>&1 || true
+          cat /tmp/curl_result.txt
+          http_code=$(tail -1 /tmp/curl_result.txt)
           echo "HTTP status: $http_code"
           if [ "$http_code" != "200" ]; then
             echo "Expected 200, got $http_code"
             exit 1
           fi
-          echo "quote-service is healthy via Gateway"
+          echo "✅ quote-service is healthy via Gateway"
 
       - name: Debug info on failure
         if: failure()
