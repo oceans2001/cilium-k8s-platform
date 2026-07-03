@@ -12,11 +12,9 @@ spec:
     matchLabels:
       app: quote-service
   ingress:
-    # allow traffic from Cilium Gateway (Envoy proxy in kube-system)
+    # allow traffic from Cilium Gateway (Envoy proxy) and cluster-internal sources
     - fromEntities:
         - ingress
-    # allow traffic from within the cluster (Gateway API uses cluster-internal routing)
-    - fromEntities:
         - cluster
       toPorts:
         - ports:
