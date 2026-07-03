@@ -171,7 +171,7 @@ jobs:
           echo "Testing via Gateway IP: $GW_IP"
           response=$(curl -s -o /dev/null -w "%{http_code}" \
             --retry 5 --retry-delay 3 \
-            -H "Host: quote.example.com" \
+            
             http://${GW_IP}/quote)
           echo "HTTP status: $response"
           if [ "$response" != "200" ]; then
