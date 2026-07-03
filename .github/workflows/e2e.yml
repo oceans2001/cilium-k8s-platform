@@ -11,7 +11,7 @@ jobs:
   e2e:
     name: Kind + Cilium + Argo CD
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
 
     steps:
       - uses: actions/checkout@v4.2.2
@@ -47,7 +47,7 @@ jobs:
           kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.2.0/config/crd/standard/gateway.networking.k8s.io_referencegrants.yaml
           kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.2.0/config/crd/standard/gateway.networking.k8s.io_grpcroutes.yaml
 
-      # --- cilium ---
+      # --- cilium (lbIPAM disabled in CI, MetalLB is used instead) ---
       - name: Install Cilium
         run: |
           helm repo add cilium https://helm.cilium.io/
@@ -55,6 +55,7 @@ jobs:
           helm install cilium cilium/cilium \
             --namespace kube-system \
             --values platform/cilium/values.yaml \
+            --set lbIPAM.enabled=false \
             --wait \
             --timeout 5m
 
@@ -62,6 +63,45 @@ jobs:
         run: |
           kubectl -n kube-system rollout status daemonset/cilium --timeout=3m
           kubectl -n kube-system rollout status deployment/cilium-operator --timeout=2m
+
+      # --- metallb ---
+      - name: Install MetalLB
+        run: |
+          helm repo add metallb https://metallb.github.io/metallb
+          helm repo update
+          helm install metallb metallb/metallb \
+            --namespace metallb-system \
+            --create-namespace \
+            --wait \
+            --timeout 3m
+
+      - name: Configure MetalLB IP pool
+        run: |
+          # get Kind network subnet
+          SUBNET=$(docker network inspect kind | \
+            python3 -c "import sys,json; print(json.load(sys.stdin)[0]['IPAM']['Config'][0]['Subnet'])")
+          echo "Kind subnet: $SUBNET"
+
+          # use last /28 of the subnet for MetalLB (e.g. 172.18.255.200-172.18.255.250)
+          BASE=$(echo $SUBNET | cut -d'.' -f1-3)
+          echo "Using IP range: ${BASE}.200-${BASE}.250"
+
+          kubectl apply -f - <<YAML
+          apiVersion: metallb.io/v1beta1
+          kind: IPAddressPool
+          metadata:
+            name: kind-pool
+            namespace: metallb-system
+          spec:
+            addresses:
+              - ${BASE}.200-${BASE}.250
+          ---
+          apiVersion: metallb.io/v1beta1
+          kind: L2Advertisement
+          metadata:
+            name: kind-l2
+            namespace: metallb-system
+          YAML
 
       # --- argo cd ---
       - name: Install Argo CD
@@ -91,19 +131,42 @@ jobs:
           kubectl get namespace quote-app || { echo "❌ Namespace never created"; exit 1; }
           kubectl -n quote-app rollout status deployment/quote-service --timeout=3m
 
-      # --- test ---
-      - name: Test quote-service endpoint
+      # --- wait for gateway IP ---
+      - name: Wait for Gateway to get IP
         run: |
-          kubectl -n quote-app port-forward svc/quote-service 8080:80 &
-          sleep 3
-          response=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/quote)
+          echo "Waiting for Gateway IP..."
+          for i in $(seq 1 18); do
+            GW_IP=$(kubectl get gateway -n gateway-infra cilium-gateway \
+              -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || echo "")
+            if [ -n "$GW_IP" ]; then
+              echo "Gateway IP: $GW_IP"
+              echo "GW_IP=$GW_IP" >> $GITHUB_ENV
+              break
+            fi
+            echo "Attempt $i/18 - no IP yet, waiting 10s..."
+            sleep 10
+          done
+          if [ -z "$GW_IP" ]; then
+            echo "❌ Gateway never got an IP"
+            kubectl get gateway -A
+            exit 1
+          fi
+
+      # --- test via gateway ---
+      - name: Test quote-service via Gateway
+        run: |
+          echo "Testing via Gateway IP: $GW_IP"
+          response=$(curl -s -o /dev/null -w "%{http_code}" \
+            --retry 5 --retry-delay 3 \
+            -H "Host: quote.example.com" \
+            http://${GW_IP}/quote)
           echo "HTTP status: $response"
           if [ "$response" != "200" ]; then
             echo "❌ Expected 200, got $response"
             kubectl -n quote-app logs -l app=quote-service --tail=50
             exit 1
           fi
-          echo "✅ quote-service is healthy"
+          echo "✅ quote-service is healthy via Gateway"
 
       # --- debug on failure ---
       - name: Debug info on failure
@@ -111,6 +174,10 @@ jobs:
         run: |
           echo "=== Pods ==="
           kubectl get pods -A
+          echo "=== Gateways ==="
+          kubectl get gateway -A
+          echo "=== HTTPRoutes ==="
+          kubectl get httproute -A
           echo "=== Argo CD Apps ==="
           kubectl get applications -n argocd
           echo "=== Pod describe ==="
