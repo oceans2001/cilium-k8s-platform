@@ -16,7 +16,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4.2.2
 
-      # --- tooling ---
       - name: Install kind
         run: |
           curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.23.0/kind-linux-amd64
@@ -34,11 +33,9 @@ jobs:
             https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
           chmod +x /usr/local/bin/argocd
 
-      # --- cluster ---
       - name: Create Kind cluster
         run: kind create cluster --config platform/kind/cluster-config.yaml --wait 60s
 
-      # --- gateway api crds ---
       - name: Install Gateway API CRDs
         run: |
           kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.2.0/config/crd/standard/gateway.networking.k8s.io_gatewayclasses.yaml
@@ -47,7 +44,6 @@ jobs:
           kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.2.0/config/crd/standard/gateway.networking.k8s.io_referencegrants.yaml
           kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.2.0/config/crd/standard/gateway.networking.k8s.io_grpcroutes.yaml
 
-      # --- cilium (lbIPAM disabled in CI, MetalLB is used instead) ---
       - name: Install Cilium
         run: |
           helm repo add cilium https://helm.cilium.io/
@@ -64,7 +60,6 @@ jobs:
           kubectl -n kube-system rollout status daemonset/cilium --timeout=3m
           kubectl -n kube-system rollout status deployment/cilium-operator --timeout=2m
 
-      # --- metallb ---
       - name: Install MetalLB
         run: |
           helm repo add metallb https://metallb.github.io/metallb
@@ -102,7 +97,6 @@ jobs:
             namespace: metallb-system
           YAML
 
-      # --- pre-create TLS secret for Gateway HTTPS listener ---
       - name: Create self-signed TLS secret
         run: |
           kubectl create namespace gateway-infra
@@ -115,7 +109,6 @@ jobs:
             --cert=/tmp/tls.crt \
             --key=/tmp/tls.key
 
-      # --- argo cd ---
       - name: Install Argo CD
         run: |
           kubectl create namespace argocd
@@ -125,32 +118,25 @@ jobs:
           kubectl -n argocd rollout status deployment/argocd-server --timeout=3m
 
       - name: Apply App of Apps
-        run: |
-          kubectl apply -f platform/argocd/root-app.yaml
+        run: kubectl apply -f platform/argocd/root-app.yaml
 
-      # --- wait for sync ---
       - name: Wait for quote-service to sync
         run: |
           echo "Waiting for quote-app namespace..."
           for i in $(seq 1 24); do
             if kubectl get namespace quote-app 2>/dev/null; then
-              echo "Namespace quote-app found"
+              echo "Namespace found"
               break
             fi
-            echo "Attempt $i/24 - namespace not yet created, waiting 10s..."
+            echo "Attempt $i/24 - waiting 10s..."
             sleep 10
           done
-          kubectl get namespace quote-app || { echo "❌ Namespace never created"; exit 1; }
+          kubectl get namespace quote-app || { echo "Namespace never created"; exit 1; }
           kubectl -n quote-app rollout status deployment/quote-service --timeout=3m
-          echo "=== CNP in quote-app ==="
-          kubectl get cnp -n quote-app
-          echo "=== CiliumClusterwideNetworkPolicy ==="
-          kubectl get ccnp
 
-      # --- wait for gateway IP and test ---
-      - name: Wait for Gateway IP and test via Gateway
+      - name: Diagnose and test via Gateway
         run: |
-          echo "Waiting for Gateway IP..."
+          echo "=== Waiting for Gateway IP ==="
           for i in $(seq 1 18); do
             GW_IP=$(kubectl get gateway -n gateway-infra shared-gateway \
               -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || echo "")
@@ -162,39 +148,44 @@ jobs:
             sleep 10
           done
           if [ -z "$GW_IP" ]; then
-            echo "❌ Gateway never got an IP"
-            kubectl get gateway -A
+            echo "Gateway never got an IP"
             exit 1
           fi
-          echo "Testing via Gateway IP: $GW_IP"
-          response=$(curl -s -o /dev/null -w "%{http_code}" --retry 5 --retry-delay 3 http://${GW_IP}/quote)
-          echo "HTTP status: $response"
-          if [ "$response" != "200" ]; then
-            echo "❌ Expected 200, got $response"
-            kubectl -n quote-app logs -l app=quote-service --tail=50
-            exit 1
-          fi
-          echo "✅ quote-service is healthy via Gateway"
 
-      # --- debug on failure ---
+          echo "=== Direct curl from runner ==="
+          curl -sv http://$\{GW_IP\}/quote 2>&1 || true
+
+          echo "=== Curl from inside cluster ==="
+          kubectl run curl-test \
+            --image=curlimages/curl:latest \
+            --restart=Never \
+            --rm \
+            --timeout=30s \
+            -- curl -sv http://$\{GW_IP\}/quote 2>&1 || true
+
+          echo "=== Final test ==="
+          http_code=$(curl -s -o /dev/null -w "%{http_code}" http://${GW_IP}/quote)
+          echo "HTTP status: $http_code"
+          if [ "$http_code" != "200" ]; then
+            echo "Expected 200, got $http_code"
+            exit 1
+          fi
+          echo "quote-service is healthy via Gateway"
+
       - name: Debug info on failure
         if: failure()
         run: |
           echo "=== Pods ==="
           kubectl get pods -A
-          echo "=== Gateway details ==="
-          kubectl describe gateway shared-gateway -n gateway-infra || true
-          echo "=== HTTPRoute details ==="
-          kubectl describe httproute quote-route -n quote-app || true
           echo "=== Gateways ==="
           kubectl get gateway -A
           echo "=== HTTPRoutes ==="
           kubectl get httproute -A
+          echo "=== CNP ==="
+          kubectl get cnp -n quote-app || true
+          echo "=== CCNP ==="
+          kubectl get ccnp || true
           echo "=== Argo CD Apps ==="
           kubectl get applications -n argocd || true
-          echo "=== Pod describe ==="
-          kubectl describe pods -n quote-app || true
           echo "=== quote-service logs ==="
-          kubectl -n quote-app logs -l app=quote-service --tail=100 || true
-          echo "=== Events ==="
-          kubectl get events -n quote-app --sort-by='.lastTimestamp' || true
+          kubectl -n quote-app logs -l app=quote-service --tail=50 || true
