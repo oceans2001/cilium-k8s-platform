@@ -160,7 +160,7 @@ jobs:
             exit 1
           fi
           echo "Testing via Gateway IP: $GW_IP"
-          response=$(curl -s -o /dev/null -w "%{http_code}" --retry 5 --retry-delay 3 http://${GW_IP}/quote)
+          response=$(docker exec cilium-platform-control-plane curl -s -o /dev/null -w "%{http_code}" http://${GW_IP}/quote)
           echo "HTTP status: $response"
           if [ "$response" != "200" ]; then
             echo "❌ Expected 200, got $response"
