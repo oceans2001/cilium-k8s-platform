@@ -137,7 +137,7 @@ jobs:
         run: |
           echo "Waiting for Gateway IP..."
           for i in $(seq 1 18); do
-            GW_IP=$(kubectl get gateway -n gateway-infra cilium-gateway \
+            GW_IP=$(kubectl get gateway -n gateway-infra shared-gateway \
               -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || echo "")
             if [ -n "$GW_IP" ]; then
               echo "Gateway IP: $GW_IP"
