@@ -24,7 +24,7 @@ envoy:
 # Ingress controller
 ingressController:
   enabled: true
-  default: true
+  default: false
   loadbalancerMode: shared
 
 # LB-IPAM for LoadBalancer services
