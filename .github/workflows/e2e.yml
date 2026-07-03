@@ -142,6 +142,10 @@ jobs:
           done
           kubectl get namespace quote-app || { echo "❌ Namespace never created"; exit 1; }
           kubectl -n quote-app rollout status deployment/quote-service --timeout=3m
+          echo "=== CNP in quote-app ==="
+          kubectl get cnp -n quote-app
+          echo "=== CiliumClusterwideNetworkPolicy ==="
+          kubectl get ccnp
 
       # --- wait for gateway IP and test ---
       - name: Wait for Gateway IP and test via Gateway
