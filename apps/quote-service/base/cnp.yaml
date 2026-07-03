@@ -12,7 +12,6 @@ spec:
     matchLabels:
       app: quote-service
   ingress:
-    # allow traffic from Cilium Gateway (Envoy proxy) and cluster-internal sources
     - fromEntities:
         - ingress
         - cluster
@@ -20,9 +19,3 @@ spec:
         - ports:
             - port: "8080"
               protocol: TCP
-          rules:
-            http:
-              - method: GET
-                path: /quote
-              - method: GET
-                path: /health
