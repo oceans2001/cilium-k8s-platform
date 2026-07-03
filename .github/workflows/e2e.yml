@@ -77,7 +77,6 @@ jobs:
 
       - name: Configure MetalLB IP pool
         run: |
-          # get IPv4 subnet explicitly
           BASE=$(docker network inspect kind \
             | python3 -c "
           import sys, json
@@ -103,6 +102,19 @@ jobs:
             name: kind-l2
             namespace: metallb-system
           YAML
+
+      # --- pre-create TLS secret for Gateway HTTPS listener ---
+      - name: Create self-signed TLS secret
+        run: |
+          kubectl create namespace gateway-infra
+          openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+            -keyout /tmp/tls.key \
+            -out /tmp/tls.crt \
+            -subj "/CN=example.com"
+          kubectl create secret tls platform-tls \
+            --namespace gateway-infra \
+            --cert=/tmp/tls.crt \
+            --key=/tmp/tls.key
 
       # --- argo cd ---
       - name: Install Argo CD
@@ -187,8 +199,6 @@ jobs:
           kubectl get applications -n argocd || true
           echo "=== Pod describe ==="
           kubectl describe pods -n quote-app || true
-          echo "=== Argo CD gateway-infra details ==="
-          kubectl get application gateway-infra -n argocd -o jsonpath='{.status.conditions}' || true
           echo "=== quote-service logs ==="
           kubectl -n quote-app logs -l app=quote-service --tail=100 || true
           echo "=== Events ==="
