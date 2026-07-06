@@ -14,9 +14,6 @@ spec:
         operator: NotIn
         values:
           - kube-system
-  enableDefaultDeny:
-    egress: false
-    ingress: false
   egress:
     - toEndpoints:
         - matchLabels:
