@@ -194,3 +194,24 @@ jobs:
           kubectl get applications -n argocd || true
           echo "=== quote-service logs ==="
           kubectl -n quote-app logs -l app=quote-service --tail=50 || true
+
+      - name: Test zero-trust network policy
+        run: |
+          echo "=== Verifying default-deny blocks direct pod-to-pod traffic ==="
+          # try to reach quote-service directly, bypassing Gateway
+          SVC_IP=$(kubectl get svc -n quote-app quote-service -o jsonpath='{.spec.clusterIP}')
+          echo "quote-service ClusterIP: $SVC_IP"
+          kubectl run policy-test \
+            --image=curlimages/curl:latest \
+            --restart=Never \
+            --namespace=default \
+            -- curl -s --max-time 5 http://$SVC_IP:80/quote
+          kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/policy-test --timeout=30s || true
+          DIRECT_OUTPUT=$(kubectl logs policy-test 2>/dev/null || echo "blocked")
+          kubectl delete pod policy-test --ignore-not-found || true
+          echo "Direct access result: $DIRECT_OUTPUT"
+          if echo "$DIRECT_OUTPUT" | grep -q "quote"; then
+            echo "❌ Direct pod access should be blocked but got a response"
+            exit 1
+          fi
+          echo "✅ Zero-trust verified: direct pod access is blocked"
