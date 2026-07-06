@@ -11,12 +11,11 @@ jobs:
   e2e:
     name: Kind + Cilium + Argo CD
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
 
     steps:
       - uses: actions/checkout@v4.2.2
 
-      # --- tooling ---
       - name: Install kind
         run: |
           curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.23.0/kind-linux-amd64
@@ -34,11 +33,9 @@ jobs:
             https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
           chmod +x /usr/local/bin/argocd
 
-      # --- cluster ---
       - name: Create Kind cluster
         run: kind create cluster --config platform/kind/cluster-config.yaml --wait 60s
 
-      # --- gateway api crds ---
       - name: Install Gateway API CRDs
         run: |
           kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.2.0/config/crd/standard/gateway.networking.k8s.io_gatewayclasses.yaml
@@ -47,7 +44,6 @@ jobs:
           kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.2.0/config/crd/standard/gateway.networking.k8s.io_referencegrants.yaml
           kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.2.0/config/crd/standard/gateway.networking.k8s.io_grpcroutes.yaml
 
-      # --- cilium ---
       - name: Install Cilium
         run: |
           helm repo add cilium https://helm.cilium.io/
@@ -55,6 +51,7 @@ jobs:
           helm install cilium cilium/cilium \
             --namespace kube-system \
             --values platform/cilium/values.yaml \
+            --set lbIPAM.enabled=false \
             --wait \
             --timeout 5m
 
@@ -63,7 +60,55 @@ jobs:
           kubectl -n kube-system rollout status daemonset/cilium --timeout=3m
           kubectl -n kube-system rollout status deployment/cilium-operator --timeout=2m
 
-      # --- argo cd ---
+      - name: Install MetalLB
+        run: |
+          helm repo add metallb https://metallb.github.io/metallb
+          helm repo update
+          helm install metallb metallb/metallb \
+            --namespace metallb-system \
+            --create-namespace \
+            --wait \
+            --timeout 3m
+
+      - name: Configure MetalLB IP pool
+        run: |
+          BASE=$(docker network inspect kind \
+            | python3 -c "
+          import sys, json
+          networks = json.load(sys.stdin)[0]['IPAM']['Config']
+          ipv4 = [n for n in networks if ':' not in n['Subnet']]
+          print(ipv4[0]['Subnet'].rsplit('.', 1)[0])
+          ")
+          echo "Using IP base: $BASE"
+          kubectl apply -f - <<YAML
+          apiVersion: metallb.io/v1beta1
+          kind: IPAddressPool
+          metadata:
+            name: kind-pool
+            namespace: metallb-system
+          spec:
+            addresses:
+              - ${BASE}.200-${BASE}.250
+          ---
+          apiVersion: metallb.io/v1beta1
+          kind: L2Advertisement
+          metadata:
+            name: kind-l2
+            namespace: metallb-system
+          YAML
+
+      - name: Create self-signed TLS secret
+        run: |
+          kubectl create namespace gateway-infra
+          openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+            -keyout /tmp/tls.key \
+            -out /tmp/tls.crt \
+            -subj "/CN=example.com"
+          kubectl create secret tls platform-tls \
+            --namespace gateway-infra \
+            --cert=/tmp/tls.crt \
+            --key=/tmp/tls.key
+
       - name: Install Argo CD
         run: |
           kubectl create namespace argocd
@@ -73,51 +118,79 @@ jobs:
           kubectl -n argocd rollout status deployment/argocd-server --timeout=3m
 
       - name: Apply App of Apps
-        run: |
-          kubectl apply -f platform/argocd/root-app.yaml
+        run: kubectl apply -f platform/argocd/root-app.yaml
 
-      # --- wait for sync ---
       - name: Wait for quote-service to sync
         run: |
           echo "Waiting for quote-app namespace..."
           for i in $(seq 1 24); do
             if kubectl get namespace quote-app 2>/dev/null; then
-              echo "Namespace quote-app found"
+              echo "Namespace found"
               break
             fi
-            echo "Attempt $i/24 - namespace not yet created, waiting 10s..."
+            echo "Attempt $i/24 - waiting 10s..."
             sleep 10
           done
-          kubectl get namespace quote-app || { echo "❌ Namespace never created"; exit 1; }
+          kubectl get namespace quote-app || { echo "Namespace never created"; exit 1; }
           kubectl -n quote-app rollout status deployment/quote-service --timeout=3m
 
-      # --- test ---
-      - name: Test quote-service endpoint
+      - name: Wait for Gateway IP
         run: |
-          kubectl -n quote-app port-forward svc/quote-service 8080:80 &
-          sleep 3
-          response=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/quote)
-          echo "HTTP status: $response"
-          if [ "$response" != "200" ]; then
-            echo "❌ Expected 200, got $response"
-            kubectl -n quote-app logs -l app=quote-service --tail=50
+          echo "Waiting for Gateway IP..."
+          for i in $(seq 1 18); do
+            GW_IP=$(kubectl get gateway -n gateway-infra shared-gateway \
+              -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || echo "")
+            if [ -n "$GW_IP" ]; then
+              echo "Gateway IP: $GW_IP"
+              echo "GW_IP=$GW_IP" >> $GITHUB_ENV
+              break
+            fi
+            echo "Attempt $i/18 - no IP yet, waiting 10s..."
+            sleep 10
+          done
+          if [ -z "$GW_IP" ]; then
+            echo "Gateway never got an IP"
             exit 1
           fi
-          echo "✅ quote-service is healthy"
 
-      # --- debug on failure ---
+      - name: Test quote-service via Gateway
+        run: |
+          echo "Testing via Gateway IP: $GW_IP"
+          # send request from inside cluster and check logs
+          kubectl run curl-test \
+            --image=curlimages/curl:latest \
+            --restart=Never \
+            --namespace=default \
+            -- curl -s http://$GW_IP/quote
+          # wait for pod to complete
+          kubectl wait --for=condition=Ready pod/curl-test --timeout=30s || true
+          kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/curl-test --timeout=30s || true
+          # get output
+          OUTPUT=$(kubectl logs curl-test 2>/dev/null || echo "")
+          kubectl delete pod curl-test --ignore-not-found || true
+          echo "Response: $OUTPUT"
+          if echo "$OUTPUT" | grep -q "quote"; then
+            echo "✅ quote-service is healthy via Gateway"
+          else
+            echo "❌ Expected quote in response, got: $OUTPUT"
+            kubectl -n quote-app logs -l app=quote-service --tail=20
+            exit 1
+          fi
+
       - name: Debug info on failure
         if: failure()
         run: |
           echo "=== Pods ==="
           kubectl get pods -A
+          echo "=== Gateways ==="
+          kubectl get gateway -A
+          echo "=== HTTPRoutes ==="
+          kubectl get httproute -A
+          echo "=== CNP ==="
+          kubectl get cnp -n quote-app || true
+          echo "=== CCNP ==="
+          kubectl get ccnp || true
           echo "=== Argo CD Apps ==="
-          kubectl get applications -n argocd
-          echo "=== Pod describe ==="
-          kubectl describe pods -n quote-app || true
-          echo "=== Argo CD gateway-infra details ==="
-          kubectl get application gateway-infra -n argocd -o jsonpath='{.status.conditions}' || true
+          kubectl get applications -n argocd || true
           echo "=== quote-service logs ==="
-          kubectl -n quote-app logs -l app=quote-service --tail=100 || true
-          echo "=== Events ==="
-          kubectl get events -n quote-app --sort-by='.lastTimestamp' || true
+          kubectl -n quote-app logs -l app=quote-service --tail=50 || true

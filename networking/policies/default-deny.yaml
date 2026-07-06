@@ -12,6 +12,8 @@ spec:
   ingress:
     - fromEntities:
         - cluster
+        - world
   egress:
     - toEntities:
         - cluster
+        - world
