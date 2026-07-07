@@ -118,7 +118,11 @@ jobs:
           kubectl -n argocd rollout status deployment/argocd-server --timeout=3m
 
       - name: Apply App of Apps
-        run: kubectl apply -f platform/argocd/root-app.yaml
+        run: |
+          BRANCH="${{ github.head_ref || github.ref_name }}"
+          echo "Using branch: $BRANCH"
+          find platform/argocd -name "*.yaml" -exec sed -i "s|targetRevision: HEAD|targetRevision: $BRANCH|" {} \;
+          kubectl apply -f platform/argocd/root-app.yaml
 
       - name: Wait for quote-service to sync
         run: |
