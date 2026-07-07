@@ -27,12 +27,6 @@ jobs:
       - name: Install Helm
         uses: azure/setup-helm@v4
 
-      - name: Install Argo CD CLI
-        run: |
-          curl -sSL -o /usr/local/bin/argocd \
-            https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
-          chmod +x /usr/local/bin/argocd
-
       - name: Create Kind cluster
         run: kind create cluster --config platform/kind/cluster-config.yaml --wait 60s
 
@@ -119,9 +113,14 @@ jobs:
 
       - name: Apply App of Apps
         run: |
+          # In PRs, point Argo CD at this branch instead of main so the
+          # manifests being tested are the ones actually being reviewed.
           BRANCH="${{ github.head_ref || github.ref_name }}"
           echo "Using branch: $BRANCH"
           find platform/argocd -name "*.yaml" -exec sed -i "s|targetRevision: HEAD|targetRevision: $BRANCH|" {} \;
+          kubectl apply -f platform/argocd/apps/gateway-infra.yaml
+          kubectl apply -f platform/argocd/apps/platform-policies.yaml
+          kubectl apply -f platform/argocd/apps/quote-service.yaml
           kubectl apply -f platform/argocd/root-app.yaml
 
       - name: Wait for quote-service to sync
@@ -160,16 +159,12 @@ jobs:
       - name: Test quote-service via Gateway
         run: |
           echo "Testing via Gateway IP: $GW_IP"
-          # send request from inside cluster and check logs
           kubectl run curl-test \
             --image=curlimages/curl:latest \
             --restart=Never \
             --namespace=default \
             -- curl -s http://$GW_IP/quote
-          # wait for pod to complete
-          kubectl wait --for=condition=Ready pod/curl-test --timeout=30s || true
           kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/curl-test --timeout=30s || true
-          # get output
           OUTPUT=$(kubectl logs curl-test 2>/dev/null || echo "")
           kubectl delete pod curl-test --ignore-not-found || true
           echo "Response: $OUTPUT"
@@ -181,28 +176,9 @@ jobs:
             exit 1
           fi
 
-      - name: Debug info on failure
-        if: failure()
-        run: |
-          echo "=== Pods ==="
-          kubectl get pods -A
-          echo "=== Gateways ==="
-          kubectl get gateway -A
-          echo "=== HTTPRoutes ==="
-          kubectl get httproute -A
-          echo "=== CNP ==="
-          kubectl get cnp -n quote-app || true
-          echo "=== CCNP ==="
-          kubectl get ccnp || true
-          echo "=== Argo CD Apps ==="
-          kubectl get applications -n argocd || true
-          echo "=== quote-service logs ==="
-          kubectl -n quote-app logs -l app=quote-service --tail=50 || true
-
       - name: Test zero-trust network policy
         run: |
           echo "=== Verifying default-deny blocks direct pod-to-pod traffic ==="
-          # try to reach quote-service directly, bypassing Gateway
           SVC_IP=$(kubectl get svc -n quote-app quote-service -o jsonpath='{.spec.clusterIP}')
           echo "quote-service ClusterIP: $SVC_IP"
           kubectl run policy-test \
@@ -220,10 +196,20 @@ jobs:
           fi
           echo "✅ Zero-trust verified: direct pod access is blocked"
 
-      - name: Debug applied CNP
-        if: always()
+      - name: Debug info on failure
+        if: failure()
         run: |
-          echo "=== Actual CNP applied in cluster ==="
-          kubectl get cnp -n quote-app -o yaml
-          echo "=== Actual CCNP applied in cluster ==="
-          kubectl get ccnp -o yaml
+          echo "=== Pods ==="
+          kubectl get pods -A
+          echo "=== Gateways ==="
+          kubectl get gateway -A
+          echo "=== HTTPRoutes ==="
+          kubectl get httproute -A
+          echo "=== CNP ==="
+          kubectl get cnp -n quote-app -o yaml || true
+          echo "=== CCNP ==="
+          kubectl get ccnp -o yaml || true
+          echo "=== Argo CD Apps ==="
+          kubectl get applications -n argocd || true
+          echo "=== quote-service logs ==="
+          kubectl -n quote-app logs -l app=quote-service --tail=50 || true
