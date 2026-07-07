@@ -215,3 +215,11 @@ jobs:
             exit 1
           fi
           echo "✅ Zero-trust verified: direct pod access is blocked"
+
+      - name: Debug applied CNP
+        if: always()
+        run: |
+          echo "=== Actual CNP applied in cluster ==="
+          kubectl get cnp -n quote-app -o yaml
+          echo "=== Actual CCNP applied in cluster ==="
+          kubectl get ccnp -o yaml
