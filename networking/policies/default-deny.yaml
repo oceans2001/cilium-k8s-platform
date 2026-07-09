@@ -7,13 +7,16 @@ metadata:
     team: platform
     env: production
 spec:
-  description: "Default deny all ingress and egress for all pods"
-  endpointSelector: {}
+  description: "Default deny for all pods except quote-app (fully zero-trust via its own CNP)"
+  endpointSelector:
+    matchExpressions:
+      - key: any:io.kubernetes.pod.namespace
+        operator: NotIn
+        values:
+          - quote-app
   ingress:
     - fromEntities:
         - cluster
-        - world
   egress:
     - toEntities:
         - cluster
-        - world

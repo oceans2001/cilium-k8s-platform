@@ -2,18 +2,15 @@
 apiVersion: cilium.io/v2
 kind: CiliumClusterwideNetworkPolicy
 metadata:
-  name: platform-dns-visibility
+  name: argocd-egress
   labels:
     team: platform
     env: production
 spec:
-  description: "Allow DNS egress to CoreDNS with L7 visibility"
+  description: "Allow ArgoCD control plane to reach kube-apiserver and the internet (git repos)"
   endpointSelector:
-    matchExpressions:
-      - key: any:io.kubernetes.pod.namespace
-        operator: NotIn
-        values:
-          - kube-system
+    matchLabels:
+      any:io.kubernetes.pod.namespace: argocd
   egress:
     - toEndpoints:
         - matchLabels:
@@ -28,3 +25,13 @@ spec:
           rules:
             dns:
               - matchPattern: "*"
+    - toEntities:
+        - kube-apiserver
+    - toEntities:
+        - world
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+            - port: "80"
+              protocol: TCP

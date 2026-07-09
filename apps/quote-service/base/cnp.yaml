@@ -12,9 +12,9 @@ spec:
     matchLabels:
       app: quote-service
   ingress:
+    # allow only traffic proxied through the Cilium Gateway (north-south L7 proxy)
     - fromEntities:
         - ingress
-        - cluster
       toPorts:
         - ports:
             - port: "8080"
