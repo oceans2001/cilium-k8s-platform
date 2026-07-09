@@ -116,8 +116,10 @@ jobs:
           # In PRs, point Argo CD at this branch instead of main so the
           # manifests being tested are the ones actually being reviewed.
           BRANCH="${{ github.head_ref || github.ref_name }}"
-          echo "Using branch: $BRANCH"
+          echo "Resolved branch from GitHub context: $BRANCH"
           find platform/argocd -name "*.yaml" -exec sed -i "s|targetRevision: HEAD|targetRevision: $BRANCH|" {} \;
+          echo "=== quote-service.yaml after patch ==="
+          cat platform/argocd/apps/quote-service.yaml
           kubectl apply -f platform/argocd/apps/gateway-infra.yaml
           kubectl apply -f platform/argocd/apps/platform-policies.yaml
           kubectl apply -f platform/argocd/apps/quote-service.yaml
