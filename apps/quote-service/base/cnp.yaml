@@ -12,10 +12,9 @@ spec:
     matchLabels:
       app: quote-service
   ingress:
-    # allow only from Cilium Gateway (Envoy pods in kube-system)
-    - fromEndpoints:
-        - matchLabels:
-            io.kubernetes.pod.namespace: kube-system
+    # allow only traffic proxied through the Cilium Gateway (north-south L7 proxy)
+    - fromEntities:
+        - ingress
       toPorts:
         - ports:
             - port: "8080"
