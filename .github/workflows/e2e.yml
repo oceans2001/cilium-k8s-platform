@@ -118,12 +118,14 @@ jobs:
           BRANCH="${{ github.head_ref || github.ref_name }}"
           echo "Resolved branch from GitHub context: $BRANCH"
           find platform/argocd -name "*.yaml" -exec sed -i "s|targetRevision: HEAD|targetRevision: $BRANCH|" {} \;
-          echo "=== quote-service.yaml after patch ==="
-          cat platform/argocd/apps/quote-service.yaml
+          # NOTE: we intentionally do NOT apply root-app.yaml here.
+          # root's own sync would recreate these three Applications from
+          # Git with targetRevision: HEAD, undoing our branch patch above
+          # (App-of-Apps always tracks main; testing a PR branch through
+          # it needs a PR-aware generator, which is out of scope for CI).
           kubectl apply -f platform/argocd/apps/gateway-infra.yaml
           kubectl apply -f platform/argocd/apps/platform-policies.yaml
           kubectl apply -f platform/argocd/apps/quote-service.yaml
-          kubectl apply -f platform/argocd/root-app.yaml
 
       - name: Wait for quote-service to sync
         run: |
