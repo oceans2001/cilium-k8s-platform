@@ -200,6 +200,15 @@ jobs:
           fi
           echo "✅ Zero-trust verified: direct pod access is blocked"
 
+      - name: Capture Hubble flow logs
+        run: |
+          echo "=== Hubble flows for quote-app (HTTP traffic) ==="
+          kubectl exec -n kube-system ds/cilium -- hubble observe \
+            --namespace quote-app \
+            --protocol http \
+            --last 20 \
+            -o compact || echo "Hubble observe not available (relay/cli not enabled in this build)"
+
       - name: Debug info on failure
         if: failure()
         run: |
