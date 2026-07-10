@@ -200,6 +200,27 @@ jobs:
           fi
           echo "✅ Zero-trust verified: direct pod access is blocked"
 
+      - name: Capture Hubble flow logs
+        run: |
+          echo "=== Installing Hubble CLI ==="
+          HUBBLE_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/hubble/master/stable.txt)
+          curl -L --fail --remote-name-all \
+            "https://github.com/cilium/hubble/releases/download/${HUBBLE_VERSION}/hubble-linux-amd64.tar.gz"
+          tar xzf hubble-linux-amd64.tar.gz
+          sudo mv hubble /usr/local/bin/hubble
+
+          echo "=== Port-forwarding to Hubble Relay ==="
+          kubectl port-forward -n kube-system svc/hubble-relay 4245:80 &
+          sleep 5
+
+          echo "=== Hubble flows for quote-app (HTTP traffic) ==="
+          hubble observe \
+            --server localhost:4245 \
+            --namespace quote-app \
+            --protocol http \
+            --last 20 \
+            -o compact || echo "Hubble observe not available"
+
       - name: Debug info on failure
         if: failure()
         run: |
