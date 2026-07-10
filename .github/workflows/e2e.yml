@@ -180,6 +180,25 @@ jobs:
             exit 1
           fi
 
+      - name: Test quote-service via HTTPS Gateway listener
+        run: |
+          echo "Testing HTTPS (port 443) via Gateway IP: $GW_IP"
+          kubectl run curl-test-https \
+            --image=curlimages/curl:latest \
+            --restart=Never \
+            --namespace=default \
+            -- curl -sk https://$GW_IP/quote
+          kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/curl-test-https --timeout=30s || true
+          OUTPUT=$(kubectl logs curl-test-https 2>/dev/null || echo "")
+          kubectl delete pod curl-test-https --ignore-not-found || true
+          echo "Response: $OUTPUT"
+          if echo "$OUTPUT" | grep -q "quote"; then
+            echo "✅ HTTPS Gateway listener with TLS termination is healthy"
+          else
+            echo "❌ Expected quote in HTTPS response, got: $OUTPUT"
+            exit 1
+          fi
+
       - name: Test zero-trust network policy
         run: |
           echo "=== Verifying default-deny blocks direct pod-to-pod traffic ==="
