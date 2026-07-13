@@ -12,10 +12,17 @@ spec:
     matchLabels:
       app: quote-service
   ingress:
-    # allow only traffic proxied through the Cilium Gateway (north-south L7 proxy)
+    # allow only traffic proxied through the Cilium Gateway (north-south L7 proxy),
+    # restricted at L7 to only the routes this service actually exposes
     - fromEntities:
         - ingress
       toPorts:
         - ports:
             - port: "8080"
               protocol: TCP
+          rules:
+            http:
+              - method: GET
+                path: /quote
+              - method: GET
+                path: /health

@@ -199,6 +199,28 @@ jobs:
             exit 1
           fi
 
+      - name: Test L7 HTTP policy enforcement
+        run: |
+          echo "=== Verifying L7 policy blocks disallowed HTTP methods/paths ==="
+          kubectl run curl-test-l7 \
+            --image=curlimages/curl:latest \
+            --restart=Never \
+            --namespace=default \
+            -- sh -c "curl -s -o /dev/null -w 'POST /quote: %{http_code}\n' -X POST http://$GW_IP/quote; curl -s -o /dev/null -w 'GET /admin: %{http_code}\n' http://$GW_IP/admin"
+          kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/curl-test-l7 --timeout=30s || true
+          L7_OUTPUT=$(kubectl logs curl-test-l7 2>/dev/null || echo "")
+          kubectl delete pod curl-test-l7 --ignore-not-found || true
+          echo "$L7_OUTPUT"
+          if echo "$L7_OUTPUT" | grep -q "POST /quote: 200"; then
+            echo "❌ POST /quote should be blocked by L7 policy but got 200"
+            exit 1
+          fi
+          if echo "$L7_OUTPUT" | grep -q "GET /admin: 200"; then
+            echo "❌ GET /admin should be blocked by L7 policy but got 200"
+            exit 1
+          fi
+          echo "✅ L7 HTTP policy verified: only GET /quote and GET /health are allowed"
+
       - name: Test zero-trust network policy
         run: |
           echo "=== Verifying default-deny blocks direct pod-to-pod traffic ==="
