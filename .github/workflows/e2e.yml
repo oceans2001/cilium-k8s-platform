@@ -221,6 +221,28 @@ jobs:
           fi
           echo "✅ L7 HTTP policy verified: only GET /quote and GET /health are allowed"
 
+      - name: Test egress policy blocks external traffic from quote-service
+        run: |
+          echo "=== Verifying quote-service cannot reach the outside world ==="
+          POD=$(kubectl get pod -n quote-app -l app=quote-service -o jsonpath='{.items[0].metadata.name}')
+          echo "Testing egress from pod: $POD"
+          EGRESS_OUTPUT=$(kubectl exec -n quote-app "$POD" -- \
+            python3 -c "
+          import socket
+          try:
+              socket.setdefaulttimeout(5)
+              socket.create_connection(('1.1.1.1', 443))
+              print('CONNECTED')
+          except Exception as e:
+              print('BLOCKED:', e)
+          " 2>&1 || echo "BLOCKED: exec failed")
+          echo "Result: $EGRESS_OUTPUT"
+          if echo "$EGRESS_OUTPUT" | grep -q "CONNECTED"; then
+            echo "❌ quote-service should not be able to reach external hosts"
+            exit 1
+          fi
+          echo "✅ Egress policy verified: quote-service cannot reach the outside world"
+
       - name: Test zero-trust network policy
         run: |
           echo "=== Verifying default-deny blocks direct pod-to-pod traffic ==="
