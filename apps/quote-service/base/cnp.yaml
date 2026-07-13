@@ -26,3 +26,18 @@ spec:
                 path: /quote
               - method: GET
                 path: /health
+  egress:
+    # quote-service has no external dependencies; only allow DNS resolution
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"
